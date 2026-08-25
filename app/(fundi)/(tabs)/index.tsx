@@ -23,21 +23,30 @@ export default function FundiDashboardScreen() {
   const [activeJob, setActiveJob] = useState<Job | null>(null);
 
   useEffect(() => {
-    fundiService.getFundiEarnings(user?.id || 'fundi_001').then(res => {
-      if (res.success && res.data) setEarnings(res.data);
+    if (!user?.id) return;
+    // Real Supabase data
+    fundiService.getFundiEarnings(user.id).then(res => {
+      if (res.success && res.data) setEarnings(res.data as any);
     });
-    jobService.getFundiJobs(user?.id || 'fundi_001').then(res => {
+    jobService.getFundiJobs(user.id).then(res => {
       if (res.success && res.data) {
         const active = res.data.find(j => ['fundi_accepted', 'on_the_way', 'arrived', 'in_progress'].includes(j.status));
         setActiveJob(active || null);
       }
     });
-  }, []);
+    // Real-time: listen for new jobs assigned to this fundi
+    const sub = jobService.subscribeToFundiJobs(user.id, (updatedJob) => {
+      if (updatedJob.status === 'fundi_assigned') {
+        router.push('/(fundi)/incoming-job');
+      }
+    });
+    return () => { sub.unsubscribe(); };
+  }, [user?.id]);
 
   const toggleOnline = async () => {
     const next = !isOnline;
     setIsOnline(next);
-    await fundiService.toggleOnlineStatus(user?.id || 'fundi_001', next);
+    await fundiService.toggleOnlineStatus(user?.id || '', next);
   };
 
   // Simulate an incoming job demo

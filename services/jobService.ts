@@ -1,120 +1,95 @@
-// PataFundi Job Service — Mock Implementation
-
+// PataFundi Job Service — Real Supabase Implementation
+import { getSupabaseClient } from '@/template';
 import { Job, JobStatus, UrgencyLevel, PriceEstimate, ApiResponse } from '@/types';
 import { PRICING_CONFIG } from '@/constants/config';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 
-const simulateDelay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+async function callJobs<T>(body: object): Promise<ApiResponse<T>> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.functions.invoke('patafundi-jobs', { body });
+  if (error) {
+    let msg = error.message;
+    if (error instanceof FunctionsHttpError) {
+      try { msg = await error.context.text(); } catch { /* ignore */ }
+    }
+    return { success: false, error: msg };
+  }
+  return data as ApiResponse<T>;
+}
 
-const MOCK_JOBS: Job[] = [
-  {
-    id: 'job_001',
-    customerId: 'cust_001',
-    fundiId: 'fundi_001',
-    serviceCategory: 'plumbing',
-    title: 'Kitchen Sink Leak',
-    description: 'My kitchen sink has been leaking for 2 days. Water pooling under the cabinet.',
-    photos: [],
+// Map DB job row to frontend Job type
+function mapJob(row: any): Job {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    fundiId: row.fundi_id,
+    serviceCategory: row.service_category,
+    title: row.title,
+    description: row.description,
+    photos: row.photos || [],
     location: {
-      latitude: -1.2921,
-      longitude: 36.8219,
-      address: '14 Riverside Drive, Westlands',
-      area: 'Westlands',
-      city: 'Nairobi',
+      latitude: row.lat,
+      longitude: row.lng,
+      address: row.address,
+      area: row.area,
+      city: row.city,
     },
-    urgency: 'urgent',
-    status: 'in_progress',
+    urgency: row.urgency,
+    scheduledAt: row.scheduled_at,
+    status: row.status,
     estimatedPrice: {
-      baseRate: 2500,
-      distanceFee: 150,
-      travelFee: 200,
-      urgencyMultiplier: 1.5,
-      urgencyLabel: 'Urgent',
-      estimatedTotal: 4275,
-      minTotal: 3500,
-      maxTotal: 6000,
-      note: 'Inclusive of all fees',
+      baseRate: row.base_rate || 0,
+      distanceFee: row.distance_fee || 0,
+      travelFee: row.travel_fee || 0,
+      urgencyMultiplier: row.urgency_multiplier || 1,
+      urgencyLabel: row.urgency || '',
+      estimatedTotal: row.estimated_total || 0,
+      minTotal: row.min_total || 0,
+      maxTotal: row.max_total || 0,
+      note: PRICING_CONFIG.platformFeeNote,
     },
-    agreedPrice: 4500,
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date().toISOString(),
-    timeline: [
-      { status: 'requested', timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
-      { status: 'matching', timestamp: new Date(Date.now() - 115 * 60 * 1000).toISOString() },
-      { status: 'fundi_assigned', timestamp: new Date(Date.now() - 110 * 60 * 1000).toISOString() },
-      { status: 'fundi_accepted', timestamp: new Date(Date.now() - 100 * 60 * 1000).toISOString() },
-      { status: 'on_the_way', timestamp: new Date(Date.now() - 90 * 60 * 1000).toISOString() },
-      { status: 'arrived', timestamp: new Date(Date.now() - 60 * 60 * 1000).toISOString() },
-      { status: 'in_progress', timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString() },
-    ],
-    customer: { firstName: 'Amina', lastName: 'Wanjiku', phone: '+254712345678' },
-    fundi: {
-      firstName: 'James',
-      lastName: 'Omondi',
-      phone: '+254723456789',
-      rating: 4.8,
-      isVerified: true,
-    },
-  },
-  {
-    id: 'job_002',
-    customerId: 'cust_001',
-    serviceCategory: 'electrical',
-    title: 'Faulty Power Sockets',
-    description: 'Three power sockets in the living room stopped working after a power surge.',
-    photos: [],
-    location: {
-      latitude: -1.2945,
-      longitude: 36.8163,
-      address: '14 Riverside Drive, Westlands',
-      area: 'Westlands',
-      city: 'Nairobi',
-    },
-    urgency: 'today',
-    status: 'completed',
-    estimatedPrice: {
-      baseRate: 3000,
-      distanceFee: 100,
-      travelFee: 200,
-      urgencyMultiplier: 1.2,
-      urgencyLabel: 'Today',
-      estimatedTotal: 3960,
-      minTotal: 3000,
-      maxTotal: 5000,
-      note: 'Inclusive of all fees',
-    },
-    agreedPrice: 4000,
-    finalPrice: 4000,
-    createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
-    timeline: [],
-    customer: { firstName: 'Amina', lastName: 'Wanjiku' },
-    fundi: { firstName: 'Peter', lastName: 'Kariuki', rating: 4.9, isVerified: true },
-  },
-];
+    agreedPrice: row.agreed_price,
+    finalPrice: row.final_price,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    timeline: (row.job_timeline || []).map((t: any) => ({
+      status: t.status,
+      timestamp: t.created_at,
+      note: t.note,
+    })).sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()),
+    customer: row.customer,
+    fundi: row.fundi,
+  };
+}
 
 export const jobService = {
   async getCustomerJobs(customerId: string): Promise<ApiResponse<Job[]>> {
-    await simulateDelay(800);
-    const jobs = MOCK_JOBS.filter(j => j.customerId === customerId);
-    return { success: true, data: jobs };
+    const res = await callJobs<any[]>({ action: 'get_customer_jobs' });
+    if (!res.success || !res.data) return res as ApiResponse<Job[]>;
+    return { success: true, data: res.data.map(mapJob) };
   },
 
   async getFundiJobs(fundiId: string): Promise<ApiResponse<Job[]>> {
-    await simulateDelay(800);
-    const jobs = MOCK_JOBS.filter(j => j.fundiId === fundiId);
-    return { success: true, data: jobs };
+    const res = await callJobs<any[]>({ action: 'get_fundi_jobs' });
+    if (!res.success || !res.data) return res as ApiResponse<Job[]>;
+    return { success: true, data: res.data.map(mapJob) };
   },
 
   async getJobById(jobId: string): Promise<ApiResponse<Job>> {
-    await simulateDelay(500);
-    const job = MOCK_JOBS.find(j => j.id === jobId);
-    if (!job) return { success: false, error: 'Job not found.' };
-    return { success: true, data: job };
+    const res = await callJobs<any>({ action: 'get_job', job_id: jobId });
+    if (!res.success || !res.data) return res as ApiResponse<Job>;
+    return { success: true, data: mapJob(res.data) };
   },
 
   async getAllJobs(): Promise<ApiResponse<Job[]>> {
-    await simulateDelay(800);
-    return { success: true, data: MOCK_JOBS };
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.functions.invoke('patafundi-admin', {
+      body: { action: 'get_all_jobs' },
+    });
+    if (error) return { success: false, error: error.message };
+    const res = data as ApiResponse<any[]>;
+    if (!res.success || !res.data) return res as ApiResponse<Job[]>;
+    return { success: true, data: res.data.map(mapJob) };
   },
 
   calculatePriceEstimate(
@@ -127,7 +102,6 @@ export const jobService = {
     const baseRate = (rates.min + rates.max) / 2;
     const distanceFee = Math.round(distanceKm * PRICING_CONFIG.distanceRate);
     const travelFee = PRICING_CONFIG.travelBase;
-
     const urgencyMap: Record<UrgencyLevel, { multiplier: number; label: string }> = {
       emergency: { multiplier: 2.0, label: 'Emergency' },
       urgent: { multiplier: 1.5, label: 'Urgent' },
@@ -136,7 +110,6 @@ export const jobService = {
     };
     const { multiplier, label } = urgencyMap[urgency];
     const estimatedTotal = Math.round((baseRate + distanceFee + travelFee) * multiplier);
-
     return {
       baseRate,
       distanceFee,
@@ -151,31 +124,77 @@ export const jobService = {
   },
 
   async createJob(jobData: Partial<Job>): Promise<ApiResponse<Job>> {
-    await simulateDelay(1500);
-    const newJob: Job = {
-      id: `job_${Date.now()}`,
-      customerId: jobData.customerId || '',
-      serviceCategory: jobData.serviceCategory || '',
-      title: jobData.title || '',
-      description: jobData.description || '',
+    const estimate = jobData.estimatedPrice;
+    const res = await callJobs<any>({
+      action: 'create_job',
+      service_category: jobData.serviceCategory,
+      title: jobData.title,
+      description: jobData.description,
       photos: jobData.photos || [],
-      location: jobData.location || { latitude: 0, longitude: 0, address: '' },
-      urgency: jobData.urgency || 'today',
-      status: 'requested',
-      estimatedPrice: jobData.estimatedPrice || { baseRate: 0, distanceFee: 0, travelFee: 0, urgencyMultiplier: 1, urgencyLabel: '', estimatedTotal: 0, minTotal: 0, maxTotal: 0, note: '' },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      timeline: [{ status: 'requested', timestamp: new Date().toISOString() }],
-    };
-    return { success: true, data: newJob };
+      lat: jobData.location?.latitude,
+      lng: jobData.location?.longitude,
+      address: jobData.location?.address,
+      area: jobData.location?.area,
+      city: jobData.location?.city,
+      urgency: jobData.urgency,
+      scheduled_at: jobData.scheduledAt,
+      base_rate: estimate?.baseRate,
+      distance_fee: estimate?.distanceFee,
+      travel_fee: estimate?.travelFee,
+      urgency_multiplier: estimate?.urgencyMultiplier,
+      estimated_total: estimate?.estimatedTotal,
+      min_total: estimate?.minTotal,
+      max_total: estimate?.maxTotal,
+    });
+    if (!res.success || !res.data) return res as ApiResponse<Job>;
+    return { success: true, data: mapJob(res.data) };
   },
 
-  async updateJobStatus(jobId: string, status: JobStatus): Promise<ApiResponse<Job>> {
-    await simulateDelay(600);
-    const job = MOCK_JOBS.find(j => j.id === jobId);
-    if (!job) return { success: false, error: 'Job not found.' };
-    job.status = status;
-    job.timeline.push({ status, timestamp: new Date().toISOString() });
-    return { success: true, data: job };
+  async updateJobStatus(jobId: string, status: JobStatus, note?: string): Promise<ApiResponse<Job>> {
+    const res = await callJobs<any>({ action: 'update_status', job_id: jobId, status, note });
+    if (!res.success || !res.data) return res as ApiResponse<Job>;
+    return { success: true, data: mapJob(res.data) };
+  },
+
+  // Real-time subscription for a specific job
+  subscribeToJob(jobId: string, onUpdate: (job: any) => void) {
+    const supabase = getSupabaseClient();
+    return supabase
+      .channel(`job:${jobId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'jobs',
+        filter: `id=eq.${jobId}`,
+      }, (payload) => onUpdate(payload.new))
+      .subscribe();
+  },
+
+  // Real-time subscription for job timeline
+  subscribeToTimeline(jobId: string, onEvent: (event: any) => void) {
+    const supabase = getSupabaseClient();
+    return supabase
+      .channel(`timeline:${jobId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'job_timeline',
+        filter: `job_id=eq.${jobId}`,
+      }, (payload) => onEvent(payload.new))
+      .subscribe();
+  },
+
+  // Real-time: fundi listens for new jobs assigned to them
+  subscribeToFundiJobs(fundiId: string, onNewJob: (job: any) => void) {
+    const supabase = getSupabaseClient();
+    return supabase
+      .channel(`fundi_jobs:${fundiId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'jobs',
+        filter: `fundi_id=eq.${fundiId}`,
+      }, (payload) => onNewJob(payload.new))
+      .subscribe();
   },
 };

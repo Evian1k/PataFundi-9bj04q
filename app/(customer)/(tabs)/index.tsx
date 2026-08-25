@@ -30,10 +30,11 @@ export default function CustomerHomeScreen() {
   }, []);
 
   const loadData = async () => {
+    if (!user?.id) return;
     const fundiRes = await fundiService.getAllFundis();
     if (fundiRes.success && fundiRes.data) setNearbyFundis(fundiRes.data.slice(0, 5));
 
-    const jobRes = await jobService.getCustomerJobs(user?.id || 'cust_001');
+    const jobRes = await jobService.getCustomerJobs(user.id);
     if (jobRes.success && jobRes.data) {
       const active = jobRes.data.find(j => ['matching', 'fundi_assigned', 'fundi_accepted', 'on_the_way', 'arrived', 'in_progress'].includes(j.status));
       setActiveJob(active || null);

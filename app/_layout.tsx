@@ -11,6 +11,7 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false, animation: 'fade_from_bottom' }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="onboarding" />
+            <Stack.Screen name="marketing" />
             <Stack.Screen name="auth/login" />
             <Stack.Screen name="auth/signup" />
             <Stack.Screen name="auth/otp" />
@@ -19,7 +20,7 @@ export default function RootLayout() {
             <Stack.Screen name="(fundi)" />
             <Stack.Screen name="(admin)" />
             <Stack.Screen name="(staff)" />
-            <Stack.Screen name="marketing" />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           </Stack>
         </AuthProvider>
       </SafeAreaProvider>

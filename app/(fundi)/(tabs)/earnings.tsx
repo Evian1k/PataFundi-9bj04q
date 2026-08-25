@@ -22,13 +22,14 @@ export default function FundiEarningsScreen() {
   const [requesting, setRequesting] = useState(false);
 
   useEffect(() => {
-    fundiService.getFundiEarnings(user?.id || 'fundi_001').then(res => {
-      if (res.success && res.data) setEarnings(res.data);
+    if (!user?.id) return;
+    fundiService.getFundiEarnings(user.id).then(res => {
+      if (res.success && res.data) setEarnings(res.data as any);
     });
-    paymentService.getFundiPayoutHistory(user?.id || 'fundi_001').then(res => {
+    paymentService.getFundiPayoutHistory(user.id).then(res => {
       if (res.success && res.data) setPayouts(res.data);
     });
-  }, []);
+  }, [user?.id]);
 
   const handlePayout = async () => {
     if (earnings.available < 500) {

@@ -1,37 +1,31 @@
-// PataFundi Admin Service — SUPER ADMIN ONLY
-// This service must NEVER be imported by customer or fundi screens
-
+// PataFundi Admin Service — Real Supabase Implementation (Super Admin only)
+import { getSupabaseClient } from '@/template';
 import { PlatformStats, PayrollPeriod, ApiResponse } from '@/types';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 
-const simulateDelay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+async function callAdmin<T>(body: object): Promise<ApiResponse<T>> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.functions.invoke('patafundi-admin', { body });
+  if (error) {
+    let msg = error.message;
+    if (error instanceof FunctionsHttpError) {
+      try { msg = await error.context.text(); } catch { /* ignore */ }
+    }
+    return { success: false, error: msg };
+  }
+  return data as ApiResponse<T>;
+}
 
 export const adminService = {
-  // === PLATFORM OVERVIEW (Super Admin Only) ===
   async getPlatformStats(): Promise<ApiResponse<PlatformStats>> {
-    await simulateDelay(800);
-    return {
-      success: true,
-      data: {
-        totalUsers: 14832,
-        totalFundis: 2941,
-        totalJobs: 89456,
-        activeJobs: 347,
-        completedJobs: 88102,
-        totalRevenue: 48750000,      // Super Admin only — never expose to customers/fundis
-        monthlyRevenue: 4875000,
-        averageJobValue: 4250,
-        disputeRate: 0.023,
-      },
-    };
+    return callAdmin<PlatformStats>({ action: 'platform_stats' });
   },
 
   async getRevenueBreakdown(period: 'week' | 'month' | 'quarter' | 'year'): Promise<ApiResponse<{
-    labels: string[];
-    revenue: number[];
-    jobs: number[];
-    payouts: number[];
+    labels: string[]; revenue: number[]; jobs: number[]; payouts: number[];
   }>> {
-    await simulateDelay(700);
+    // Revenue breakdown requires a more complex query — using hardcoded trend for now
+    // BACKEND REQUIRED: real time-series query
     return {
       success: true,
       data: {
@@ -44,42 +38,34 @@ export const adminService = {
   },
 
   async getActiveJobsMap(): Promise<ApiResponse<Array<{ lat: number; lng: number; status: string; id: string }>>> {
-    await simulateDelay(600);
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('jobs')
+      .select('id, lat, lng, status')
+      .in('status', ['in_progress', 'on_the_way', 'arrived', 'matching']);
+
+    if (error) return { success: false, error: error.message };
     return {
       success: true,
-      data: [
-        { id: 'job_001', lat: -1.2921, lng: 36.8219, status: 'in_progress' },
-        { id: 'job_002', lat: -1.2841, lng: 36.8155, status: 'on_the_way' },
-        { id: 'job_003', lat: -1.3002, lng: 36.8334, status: 'matching' },
-      ],
+      data: (data || []).map(j => ({ id: j.id, lat: j.lat, lng: j.lng, status: j.status })),
     };
   },
 
-  // === PAYROLL (Super Admin Only) ===
   async getPayrollPeriods(): Promise<ApiResponse<PayrollPeriod[]>> {
-    await simulateDelay(800);
+    const res = await callAdmin<any[]>({ action: 'get_payroll' });
+    if (!res.success || !res.data) return res as ApiResponse<PayrollPeriod[]>;
     return {
       success: true,
-      data: [
-        {
-          id: 'payroll_aug2026',
-          periodStart: '2026-08-01',
-          periodEnd: '2026-08-31',
-          totalStaff: 47,
-          totalAmount: 2840000,
-          status: 'pending_approval',
-        },
-        {
-          id: 'payroll_jul2026',
-          periodStart: '2026-07-01',
-          periodEnd: '2026-07-31',
-          totalStaff: 45,
-          totalAmount: 2710000,
-          status: 'paid',
-          approvedBy: 'admin_001',
-          approvedAt: '2026-08-01T09:15:00Z',
-        },
-      ],
+      data: res.data.map(p => ({
+        id: p.id,
+        periodStart: p.period_start,
+        periodEnd: p.period_end,
+        totalStaff: p.total_staff,
+        totalAmount: p.total_amount,
+        status: p.status,
+        approvedBy: p.approved_by,
+        approvedAt: p.approved_at,
+      })),
     };
   },
 
@@ -89,34 +75,20 @@ export const adminService = {
     passwordConfirmation: string;
     securityCode: string;
   }): Promise<ApiResponse<{ auditId: string }>> {
-    await simulateDelay(2500);
-    // IMPORTANT: Frontend validates, backend does the actual execution
-    return {
-      success: true,
-      data: { auditId: `audit_${Date.now()}` },
-      message: 'Payroll approved and queued for processing. Funds will be disbursed within 2 business hours.',
-    };
+    const res = await callAdmin<{ audit_id: string }>({
+      action: 'approve_payroll',
+      payroll_id: params.payrollId,
+    });
+    if (!res.success || !res.data) return res as ApiResponse<{ auditId: string }>;
+    return { success: true, data: { auditId: res.data.audit_id }, message: res.message };
   },
 
-  // === DISPUTE MANAGEMENT ===
-  async getDisputes(status?: string): Promise<ApiResponse<Array<{
-    id: string; jobId: string; customerId: string; fundiId: string; reason: string; status: string; amount: number; createdAt: string;
-  }>>> {
-    await simulateDelay(600);
-    return {
-      success: true,
-      data: [
-        { id: 'disp_001', jobId: 'job_034', customerId: 'cust_089', fundiId: 'fundi_045', reason: 'Work not completed', status: 'open', amount: 6500, createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
-        { id: 'disp_002', jobId: 'job_028', customerId: 'cust_123', fundiId: 'fundi_078', reason: 'Quality issue', status: 'investigating', amount: 4200, createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() },
-      ],
-    };
+  async getDisputes(status?: string): Promise<ApiResponse<any[]>> {
+    return callAdmin<any[]>({ action: 'get_disputes', status });
   },
 
-  // === FRAUD MANAGEMENT ===
-  async getFraudAlerts(): Promise<ApiResponse<Array<{
-    id: string; type: string; entityId: string; severity: 'low' | 'medium' | 'high' | 'critical'; description: string; createdAt: string;
-  }>>> {
-    await simulateDelay(700);
+  async getFraudAlerts(): Promise<ApiResponse<any[]>> {
+    // BACKEND REQUIRED: fraud detection engine
     return {
       success: true,
       data: [
@@ -126,16 +98,8 @@ export const adminService = {
     };
   },
 
-  async getAuditLogs(limit = 50): Promise<ApiResponse<Array<{
-    id: string; action: string; actorId: string; actorRole: string; targetId?: string; details: string; timestamp: string; ip?: string;
-  }>>> {
-    await simulateDelay(800);
-    return {
-      success: true,
-      data: [
-        { id: 'audit_001', action: 'payroll_approved', actorId: 'admin_001', actorRole: 'super_admin', details: 'Payroll July 2026 approved. KSh 2,710,000.', timestamp: '2026-08-01T09:15:00Z', ip: '41.209.10.45' },
-        { id: 'audit_002', action: 'user_suspended', actorId: 'staff_003', actorRole: 'staff', targetId: 'fundi_089', details: 'Fundi suspended pending fraud investigation.', timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(), ip: '41.209.10.12' },
-      ],
-    };
+  async getAuditLogs(limit = 50): Promise<ApiResponse<any[]>> {
+    const res = await callAdmin<any[]>({ action: 'get_audit_logs' });
+    return res;
   },
 };

@@ -1,16 +1,14 @@
-// PataFundi — Splash Screen & Role Router
+// PataFundi App Root — Splash + Role Router
+// useAuthRedirect handles all role-based navigation from here
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Animated, StyleSheet, Dimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, Animated, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
-import { Colors, Typography } from '@/constants/theme';
-import { useAuth } from '@/hooks/useAuth';
-
-const { width, height } = Dimensions.get('window');
+import { Colors } from '@/constants/theme';
+import { useAuthRedirect } from '@/hooks/useAuthRedirect';
 
 export default function SplashScreen() {
-  const router = useRouter();
-  const { user, isLoading } = useAuth();
+  // This hook watches auth state and redirects to the correct role route
+  useAuthRedirect();
 
   const logoScale = useRef(new Animated.Value(0.6)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
@@ -18,7 +16,6 @@ export default function SplashScreen() {
   const glowPulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // Entrance animation
     Animated.sequence([
       Animated.parallel([
         Animated.spring(logoScale, { toValue: 1, tension: 60, friction: 8, useNativeDriver: true }),
@@ -27,36 +24,13 @@ export default function SplashScreen() {
       Animated.timing(taglineOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
     ]).start();
 
-    // Glow pulse loop
     Animated.loop(
       Animated.sequence([
         Animated.timing(glowPulse, { toValue: 1.08, duration: 1500, useNativeDriver: true }),
         Animated.timing(glowPulse, { toValue: 1, duration: 1500, useNativeDriver: true }),
       ])
     ).start();
-
-    // Navigate after loading
-    const timer = setTimeout(() => {
-      if (!isLoading) {
-        navigateBasedOnRole();
-      }
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, [isLoading]);
-
-  function navigateBasedOnRole() {
-    if (!user) {
-      router.replace('/onboarding');
-      return;
-    }
-    switch (user.role) {
-      case 'customer': router.replace('/(customer)/(tabs)'); break;
-      case 'fundi': router.replace('/(fundi)/(tabs)'); break;
-      case 'super_admin': router.replace('/(admin)/(tabs)'); break;
-      case 'staff': router.replace('/(staff)'); break;
-      default: router.replace('/onboarding');
-    }
-  }
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -109,23 +83,19 @@ const styles = StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(10,22,40,0.6)' },
   logoContainer: { alignItems: 'center', justifyContent: 'center', marginBottom: 32 },
   glowRing: {
-    position: 'absolute',
-    width: 140, height: 140, borderRadius: 70,
-    backgroundColor: 'rgba(14,165,233,0.15)',
-    borderWidth: 1,
+    position: 'absolute', width: 140, height: 140, borderRadius: 70,
+    backgroundColor: 'rgba(14,165,233,0.15)', borderWidth: 1,
     borderColor: 'rgba(14,165,233,0.3)',
   },
   logoCircle: {
     width: 100, height: 100, borderRadius: 50,
-    backgroundColor: Colors.brand.primary,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: Colors.brand.primary, alignItems: 'center',
+    justifyContent: 'center', borderWidth: 3, borderColor: 'rgba(255,255,255,0.3)',
   },
   logoLetter: { fontSize: 52, fontWeight: '800', color: '#FFFFFF', includeFontPadding: false },
   textArea: { alignItems: 'center', gap: 8 },
   appName: { fontSize: 36, fontWeight: '800', color: Colors.text.primary, letterSpacing: 1, includeFontPadding: false },
-  tagline: { fontSize: 15, color: Colors.text.secondary, fontWeight: '400', includeFontPadding: false },
+  tagline: { fontSize: 15, color: Colors.text.secondary, includeFontPadding: false },
   loadingDots: { position: 'absolute', bottom: 80, flexDirection: 'row', gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.brand.primary },
 });

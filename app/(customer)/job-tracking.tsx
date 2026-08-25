@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { jobService } from '@/services/jobService';
+import { Job } from '@/types';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Shadow } from '@/constants/theme';
@@ -27,6 +29,27 @@ export default function JobTrackingScreen() {
   const insets = useSafeAreaInsets();
   const { jobId } = useLocalSearchParams<{ jobId?: string }>();
   const [showConfirmPrompt, setShowConfirmPrompt] = useState(false);
+  const [job, setJob] = useState<Job | null>(null);
+  const subRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!jobId) return;
+    // Load real job
+    jobService.getJobById(jobId).then(res => {
+      if (res.success && res.data) setJob(res.data);
+    });
+    // Subscribe to live updates
+    subRef.current = jobService.subscribeToJob(jobId, (updated) => {
+      setJob(prev => prev ? { ...prev, status: updated.status, updatedAt: updated.updated_at } : prev);
+    });
+    return () => { subRef.current?.unsubscribe(); };
+  }, [jobId]);
+
+  const handleConfirmComplete = async () => {
+    if (!jobId) return;
+    await jobService.updateJobStatus(jobId, 'customer_confirmed', 'Customer confirmed work complete');
+    setShowConfirmPrompt(false);
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -117,7 +140,7 @@ export default function JobTrackingScreen() {
         <GlassCard style={styles.confirmSection}>
           <Text style={styles.confirmTitle}>Work finished?</Text>
           <Text style={styles.confirmDesc}>Once you confirm work is complete, payment will be processed to the Fundi.</Text>
-          <Button title="Confirm Work Complete" onPress={() => setShowConfirmPrompt(true)} variant="success" fullWidth style={{ marginTop: 12 }} />
+          <Button title="Confirm Work Complete" onPress={handleConfirmComplete} variant="success" fullWidth style={{ marginTop: 12 }} />
         </GlassCard>
 
         {/* Emergency */}

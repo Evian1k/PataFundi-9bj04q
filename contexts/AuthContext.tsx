@@ -1,6 +1,8 @@
+// PataFundi AuthContext — Real Supabase session with role-based routing
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import { User, UserRole, StaffRole } from '@/types';
 import { authService } from '@/services/authService';
+import { getSupabaseClient } from '@/template';
 
 interface AuthState {
   user: (User & { staffRole?: StaffRole }) | null;
@@ -12,6 +14,7 @@ interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   setUser: (user: User & { staffRole?: StaffRole }) => void;
+  refreshUser: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,11 +27,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    // Simulate session check
-    const timer = setTimeout(() => {
-      setState(prev => ({ ...prev, isLoading: false }));
-    }, 500);
-    return () => clearTimeout(timer);
+    const supabase = getSupabaseClient();
+
+    // Initial session check
+    const initSession = async () => {
+      const result = await authService.refreshSession();
+      if (result.success && result.data) {
+        setState({ user: result.data as User & { staffRole?: StaffRole }, isLoading: false, isAuthenticated: true });
+      } else {
+        setState(prev => ({ ...prev, isLoading: false }));
+      }
+    };
+
+    initSession();
+
+    // Listen for auth state changes (login/logout/token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        setState({ user: null, isLoading: false, isAuthenticated: false });
+        return;
+      }
+
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        const result = await authService.refreshSession();
+        if (result.success && result.data) {
+          setState({ user: result.data as User & { staffRole?: StaffRole }, isLoading: false, isAuthenticated: true });
+        }
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -41,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    setState(prev => ({ ...prev, isLoading: true }));
     await authService.logout();
     setState({ user: null, isLoading: false, isAuthenticated: false });
   };
@@ -49,8 +78,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ user, isLoading: false, isAuthenticated: true });
   };
 
+  const refreshUser = async () => {
+    const result = await authService.refreshSession();
+    if (result.success && result.data) {
+      setState({ user: result.data as User & { staffRole?: StaffRole }, isLoading: false, isAuthenticated: true });
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, setUser }}>
+    <AuthContext.Provider value={{ ...state, login, logout, setUser, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

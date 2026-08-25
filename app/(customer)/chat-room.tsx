@@ -22,33 +22,51 @@ export default function ChatRoomScreen() {
 
   useEffect(() => {
     loadMessages();
+    // Real-time subscription — scoped to this room only
+    const sub = chatService.subscribeToMessages(
+      roomId || '',
+      (newMsg) => {
+        setMessages(prev => {
+          // Avoid duplicates
+          if (prev.find(m => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
+        setTimeout(() => listRef.current?.scrollToEnd(), 100);
+      }
+    );
+    return () => { sub.unsubscribe(); };
   }, [roomId]);
 
   const loadMessages = async () => {
-    const res = await chatService.getMessages(roomId || 'room_job_001');
+    const effectiveRoomId = roomId || '';
+    if (!effectiveRoomId) return;
+    const res = await chatService.getMessages(effectiveRoomId);
     if (res.success && res.data) {
       setMessages(res.data);
       setTimeout(() => listRef.current?.scrollToEnd(), 100);
+      // Mark as read
+      chatService.markAsRead(effectiveRoomId, user?.id || '');
     }
   };
 
   const handleSend = async () => {
     if (!input.trim()) return;
     setSending(true);
+    const senderRole = (user?.role === 'fundi' ? 'fundi' : 'customer') as 'customer' | 'fundi';
     const res = await chatService.sendMessage({
-      roomId: roomId || 'room_job_001',
-      senderId: user?.id || 'cust_001',
-      senderRole: 'customer',
+      roomId: roomId || '',
+      senderId: user?.id || '',
+      senderRole,
       type: 'text',
       content: input.trim(),
     });
     if (res.success && res.data) {
-      setMessages(prev => [...prev, res.data!]);
       setInput('');
       setTimeout(() => listRef.current?.scrollToEnd(), 100);
-      // Simulate fundi typing response
-      setIsTyping(true);
-      setTimeout(() => setIsTyping(false), 3000);
+    } else if (res.error) {
+      // Message failed — keep input for retry
+      setSending(false);
+      return;
     }
     setSending(false);
   };

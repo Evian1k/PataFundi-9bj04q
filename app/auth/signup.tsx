@@ -39,7 +39,12 @@ export default function SignupScreen() {
     const result = await authService.signup({ ...form, role });
     setLoading(false);
     if (result.success && result.data) {
-      router.push({ pathname: '/auth/otp', params: { phone: form.phone, userId: result.data.id, role } });
+      // If fundi, go to fundi onboarding; otherwise go to customer tabs
+      if (role === 'fundi') {
+        router.replace('/(fundi)/onboarding' as any);
+      } else {
+        router.replace('/(customer)/(tabs)' as any);
+      }
     } else {
       showAlert('Sign Up Failed', result.error || 'Please try again.');
     }

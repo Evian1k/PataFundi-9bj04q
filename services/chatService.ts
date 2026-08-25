@@ -1,79 +1,54 @@
-// PataFundi Chat Service — Mock Implementation
-
+// PataFundi Chat Service — Real Supabase Implementation with real-time subscriptions
+import { getSupabaseClient } from '@/template';
 import { ChatRoom, ChatMessage, ApiResponse } from '@/types';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 
-const simulateDelay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+async function callChat<T>(body: object): Promise<ApiResponse<T>> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.functions.invoke('patafundi-chat', { body });
+  if (error) {
+    let msg = error.message;
+    if (error instanceof FunctionsHttpError) {
+      try { msg = await error.context.text(); } catch { /* ignore */ }
+    }
+    return { success: false, error: msg };
+  }
+  return data as ApiResponse<T>;
+}
 
-const MOCK_MESSAGES: ChatMessage[] = [
-  {
-    id: 'msg_001',
-    roomId: 'room_job_001',
-    senderId: 'fundi_001',
-    senderRole: 'fundi',
-    type: 'system',
-    content: 'James has been assigned to your job.',
-    readBy: ['cust_001', 'fundi_001'],
-    createdAt: new Date(Date.now() - 110 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'msg_002',
-    roomId: 'room_job_001',
-    senderId: 'fundi_001',
-    senderRole: 'fundi',
-    type: 'text',
-    content: 'Hello Amina! I have reviewed your job. I am on my way now. Should be there in about 20 minutes.',
-    readBy: ['cust_001', 'fundi_001'],
-    createdAt: new Date(Date.now() - 95 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'msg_003',
-    roomId: 'room_job_001',
-    senderId: 'cust_001',
-    senderRole: 'customer',
-    type: 'text',
-    content: 'Great, thank you! The gate is open. Ask the guard to let you in.',
-    readBy: ['cust_001', 'fundi_001'],
-    createdAt: new Date(Date.now() - 92 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'msg_004',
-    roomId: 'room_job_001',
-    senderId: 'fundi_001',
-    senderRole: 'fundi',
-    type: 'text',
-    content: 'I have arrived. Coming up now.',
-    readBy: ['cust_001', 'fundi_001'],
-    createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'msg_005',
-    roomId: 'room_job_001',
-    senderId: 'fundi_001',
-    senderRole: 'fundi',
-    type: 'text',
-    content: 'I found the issue. The P-trap seal has worn out. I have the replacement part. Repair should take about 30-40 minutes.',
-    readBy: ['fundi_001'],
-    createdAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
-  },
-];
+function mapMessage(m: any): ChatMessage {
+  return {
+    id: m.id,
+    roomId: m.room_id,
+    senderId: m.sender_id,
+    senderRole: m.sender_role,
+    type: m.type,
+    content: m.content,
+    imageUrl: m.image_url,
+    readBy: m.read_by || [],
+    createdAt: m.created_at,
+  };
+}
 
 export const chatService = {
   async getChatRoom(jobId: string): Promise<ApiResponse<ChatRoom>> {
-    await simulateDelay(400);
-    const room: ChatRoom = {
-      id: `room_${jobId}`,
-      jobId,
-      participants: ['cust_001', 'fundi_001'],
-      lastMessage: MOCK_MESSAGES[MOCK_MESSAGES.length - 1],
-      updatedAt: new Date().toISOString(),
+    const res = await callChat<any>({ action: 'get_room', job_id: jobId });
+    if (!res.success || !res.data) return res as ApiResponse<ChatRoom>;
+    return {
+      success: true,
+      data: {
+        id: res.data.id,
+        jobId: res.data.job_id,
+        participants: [res.data.customer_id, res.data.fundi_id],
+        updatedAt: res.data.updated_at,
+      },
     };
-    return { success: true, data: room };
   },
 
   async getMessages(roomId: string): Promise<ApiResponse<ChatMessage[]>> {
-    await simulateDelay(600);
-    const messages = MOCK_MESSAGES.filter(m => m.roomId === roomId);
-    return { success: true, data: messages };
+    const res = await callChat<any[]>({ action: 'get_messages', room_id: roomId });
+    if (!res.success || !res.data) return res as ApiResponse<ChatMessage[]>;
+    return { success: true, data: res.data.map(mapMessage) };
   },
 
   async sendMessage(params: {
@@ -84,23 +59,33 @@ export const chatService = {
     content: string;
     imageUrl?: string;
   }): Promise<ApiResponse<ChatMessage>> {
-    await simulateDelay(400);
-    const message: ChatMessage = {
-      id: `msg_${Date.now()}`,
-      roomId: params.roomId,
-      senderId: params.senderId,
-      senderRole: params.senderRole,
+    const res = await callChat<any>({
+      action: 'send_message',
+      room_id: params.roomId,
+      sender_role: params.senderRole,
       type: params.type,
       content: params.content,
-      imageUrl: params.imageUrl,
-      readBy: [params.senderId],
-      createdAt: new Date().toISOString(),
-    };
-    return { success: true, data: message };
+      image_url: params.imageUrl,
+    });
+    if (!res.success || !res.data) return res as ApiResponse<ChatMessage>;
+    return { success: true, data: mapMessage(res.data) };
   },
 
   async markAsRead(roomId: string, userId: string): Promise<ApiResponse<boolean>> {
-    await simulateDelay(200);
-    return { success: true, data: true };
+    return callChat<boolean>({ action: 'mark_read', room_id: roomId });
+  },
+
+  // Real-time subscription for chat room messages — isolated to participants only
+  subscribeToMessages(roomId: string, onMessage: (message: ChatMessage) => void) {
+    const supabase = getSupabaseClient();
+    return supabase
+      .channel(`chat:${roomId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'chat_messages',
+        filter: `room_id=eq.${roomId}`,
+      }, (payload) => onMessage(mapMessage(payload.new)))
+      .subscribe();
   },
 };

@@ -51,9 +51,10 @@ export default function JobCreateScreen() {
   };
 
   const handleSubmit = async () => {
+    if (!user?.id) { showAlert('Error', 'Not logged in.'); return; }
     setLoading(true);
     const result = await jobService.createJob({
-      customerId: user?.id || 'cust_001',
+      customerId: user.id,
       serviceCategory: category,
       title,
       description,
