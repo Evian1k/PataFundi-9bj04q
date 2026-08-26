@@ -139,8 +139,15 @@ export default function JobTrackingScreen() {
         {/* Confirm Work Button */}
         <GlassCard style={styles.confirmSection}>
           <Text style={styles.confirmTitle}>Work finished?</Text>
-          <Text style={styles.confirmDesc}>Once you confirm work is complete, payment will be processed to the Fundi.</Text>
+          <Text style={styles.confirmDesc}>Once you confirm work is complete, you will proceed to payment.</Text>
           <Button title="Confirm Work Complete" onPress={handleConfirmComplete} variant="success" fullWidth style={{ marginTop: 12 }} />
+          <Button
+            title="Proceed to Payment"
+            onPress={() => router.push({ pathname: '/(customer)/payment-flow', params: { jobId: jobId || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', amount: '4000', jobTitle: 'Install Ceiling Lights' } })}
+            variant="secondary"
+            fullWidth
+            style={{ marginTop: 8 }}
+          />
         </GlassCard>
 
         {/* Emergency */}

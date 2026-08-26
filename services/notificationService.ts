@@ -1,27 +1,12 @@
-// PataFundi Notification Service — Real Supabase Implementation
-// CRITICAL: Role isolation is enforced on BOTH frontend AND backend
+// PataFundi — Notification Service (real Supabase)
 import { getSupabaseClient } from '@/template';
-import { Notification, NotificationAudience, ApiResponse } from '@/types';
-import { FunctionsHttpError } from '@supabase/supabase-js';
+import { Notification, ApiResponse } from '@/types';
 
-async function callNotif<T>(body: object): Promise<ApiResponse<T>> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.functions.invoke('patafundi-notifications', { body });
-  if (error) {
-    let msg = error.message;
-    if (error instanceof FunctionsHttpError) {
-      try { msg = await error.context.text(); } catch { /* ignore */ }
-    }
-    return { success: false, error: msg };
-  }
-  return data as ApiResponse<T>;
-}
-
-function mapNotification(n: any, userId: string, audience: NotificationAudience): Notification {
+function mapNotif(n: any): Notification {
   return {
     id: n.id,
-    userId,
-    audience,
+    userId: n.user_id,
+    audience: n.audience,
     title: n.title,
     body: n.body,
     type: n.type,
@@ -32,48 +17,63 @@ function mapNotification(n: any, userId: string, audience: NotificationAudience)
 }
 
 export const notificationService = {
-  // Role-isolated — backend verifies audience matches user role
-  async getNotifications(userId: string, audience: NotificationAudience): Promise<ApiResponse<Notification[]>> {
-    const res = await callNotif<any[]>({ action: 'get_notifications', audience });
-    if (!res.success || !res.data) return { success: true, data: [] }; // Graceful empty
-    return { success: true, data: res.data.map(n => mapNotification(n, userId, audience)) };
+  async getNotifications(userId: string): Promise<ApiResponse<Notification[]>> {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('id, user_id, audience, title, body, type, is_read, data, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: (data || []).map(mapNotif) };
   },
 
-  async markAsRead(notificationId: string, userId: string): Promise<ApiResponse<boolean>> {
-    return callNotif<boolean>({ action: 'mark_read', notification_id: notificationId });
+  async markAsRead(notificationId: string): Promise<ApiResponse<boolean>> {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', notificationId);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: true };
   },
 
-  async markAllAsRead(userId: string, audience: NotificationAudience): Promise<ApiResponse<boolean>> {
-    return callNotif<boolean>({ action: 'mark_all_read', audience });
+  async markAllAsRead(userId: string): Promise<ApiResponse<boolean>> {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('user_id', userId)
+      .eq('is_read', false);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: true };
   },
 
-  async getUnreadCount(userId: string, audience: NotificationAudience): Promise<ApiResponse<number>> {
-    const res = await callNotif<number>({ action: 'unread_count', audience });
-    if (!res.success) return { success: true, data: 0 };
-    return res;
+  async getUnreadCount(userId: string): Promise<number> {
+    const supabase = getSupabaseClient();
+    const { count } = await supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('is_read', false);
+    return count || 0;
   },
 
-  // Real-time subscription — strictly filtered to this user only
-  subscribeToNotifications(
-    userId: string,
-    audience: NotificationAudience,
-    onNotification: (notification: Notification) => void
-  ) {
+  // Real-time subscription — scoped to user only
+  subscribeToNotifications(userId: string, onNotification: (n: Notification) => void) {
     const supabase = getSupabaseClient();
     return supabase
-      .channel(`notifications:${userId}:${audience}`)
+      .channel(`notifications:${userId}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'notifications',
         filter: `user_id=eq.${userId}`,
-      }, (payload) => {
-        const n = payload.new as any;
-        // Double-check audience on frontend too (defense in depth)
-        if (n.audience === audience) {
-          onNotification(mapNotification(n, userId, audience));
-        }
-      })
+      }, (payload) => onNotification(mapNotif(payload.new)))
       .subscribe();
   },
 };

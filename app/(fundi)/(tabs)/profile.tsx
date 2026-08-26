@@ -1,81 +1,125 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+// PataFundi — Fundi Profile Tab (real data from Supabase)
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius } from '@/constants/theme';
-import { Avatar } from '@/components/ui/Avatar';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
+import { fundiService } from '@/services/fundiService';
 import { useAuth } from '@/hooks/useAuth';
-import { useAlert } from '@/template';
+import { APP_CONFIG } from '@/constants/config';
 
 export default function FundiProfileScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { user, logout } = useAuth();
-  const { showAlert } = useAlert();
+  const [fundiProfile, setFundiProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  const handleLogout = () => {
-    showAlert('Sign Out', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: async () => { await logout(); router.replace('/auth/login'); } },
-    ]);
-  };
+  useEffect(() => {
+    if (!user?.id) return;
+    fundiService.getFundiById(user.id).then(res => {
+      setLoading(false);
+      if (res.success && res.data) setFundiProfile(res.data);
+    });
+  }, [user?.id]);
 
-  const MENU = [
-    { icon: 'person', label: 'Personal Information' },
-    { icon: 'build', label: 'Skills & Services' },
-    { icon: 'location-on', label: 'Service Areas' },
-    { icon: 'photo-library', label: 'Portfolio' },
-    { icon: 'account-balance', label: 'Bank Details' },
-    { icon: 'verified', label: 'Verification Documents' },
-    { icon: 'star', label: 'Reviews & Ratings' },
-    { icon: 'help', label: 'Help Center' },
-    { icon: 'security', label: 'Security' },
+  const sections = [
+    {
+      title: 'Professional',
+      items: [
+        { icon: 'badge', label: 'Skills & Services', color: Colors.brand.primary },
+        { icon: 'photo-library', label: 'Portfolio', color: Colors.brand.secondary },
+        { icon: 'description', label: 'Documents', color: Colors.semantic.warning },
+        { icon: 'star', label: 'Reviews & Ratings', color: Colors.brand.accent },
+      ],
+    },
+    {
+      title: 'Payments',
+      items: [
+        { icon: 'account-balance', label: 'Bank Details', color: Colors.brand.accent },
+        { icon: 'phone-android', label: 'M-Pesa Number', color: '#00A651' },
+        { icon: 'history', label: 'Payout History', color: Colors.brand.primary },
+      ],
+    },
+    {
+      title: 'Account',
+      items: [
+        { icon: 'person', label: 'Personal Information', color: Colors.brand.primary },
+        { icon: 'notifications', label: 'Notifications', color: Colors.semantic.warning },
+        { icon: 'lock', label: 'Security', color: Colors.semantic.error },
+        { icon: 'help', label: 'Help & Support', color: Colors.text.secondary },
+      ],
+    },
   ];
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <Text style={styles.title}>Profile</Text>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        {/* Profile Header */}
         <GlassCard variant="elevated" style={styles.profileCard}>
-          <View style={styles.profileRow}>
-            <Avatar name={`${user?.firstName} ${user?.lastName}`} size={72} isVerified isOnline />
-            <View style={styles.profileInfo}>
-              <Text style={styles.name}>{user?.firstName} {user?.lastName}</Text>
-              <Text style={styles.email}>{user?.email}</Text>
-              <View style={styles.badgeRow}>
-                <Badge label="Verified Fundi" variant="success" icon="verified" size="sm" />
-              </View>
+          <Avatar name={`${user?.firstName} ${user?.lastName}`} size={72} isVerified={fundiProfile?.isVerified} isOnline={fundiProfile?.isOnline} />
+          <View style={styles.profileInfo}>
+            <Text style={styles.profileName}>{user?.firstName} {user?.lastName}</Text>
+            <Text style={styles.profileEmail}>{user?.email}</Text>
+            <View style={styles.badgeRow}>
+              <Badge label="Fundi" variant="info" />
+              {fundiProfile?.verificationStatus === 'verified' ? (
+                <Badge label="Verified" variant="success" />
+              ) : (
+                <Badge label="Pending Verification" variant="warning" />
+              )}
             </View>
           </View>
+        </GlassCard>
+
+        {/* Stats */}
+        {fundiProfile && (
           <View style={styles.statsRow}>
-            {[{ v: '4.8', l: 'Rating' }, { v: '247', l: 'Jobs' }, { v: '8 yrs', l: 'Experience' }].map(s => (
-              <View key={s.l} style={styles.statItem}>
-                <Text style={styles.statVal}>{s.v}</Text>
-                <Text style={styles.statLbl}>{s.l}</Text>
-              </View>
-            ))}
+            <GlassCard style={styles.statCard}>
+              <MaterialIcons name="star" size={20} color={Colors.brand.secondary} />
+              <Text style={styles.statValue}>{(fundiProfile.rating || 0).toFixed(1)}</Text>
+              <Text style={styles.statLabel}>Rating</Text>
+            </GlassCard>
+            <GlassCard style={styles.statCard}>
+              <MaterialIcons name="check-circle" size={20} color={Colors.semantic.success} />
+              <Text style={styles.statValue}>{fundiProfile.totalJobs || 0}</Text>
+              <Text style={styles.statLabel}>Jobs Done</Text>
+            </GlassCard>
+            <GlassCard style={styles.statCard}>
+              <MaterialIcons name="schedule" size={20} color={Colors.brand.primary} />
+              <Text style={styles.statValue}>{fundiProfile.experienceYears || 0}y</Text>
+              <Text style={styles.statLabel}>Experience</Text>
+            </GlassCard>
           </View>
-        </GlassCard>
+        )}
 
-        <GlassCard noPadding style={styles.menuCard}>
-          {MENU.map((item, idx) => (
-            <Pressable key={item.label} style={[styles.menuItem, idx < MENU.length - 1 && styles.menuItemBorder]} onPress={() => {}}>
-              <View style={styles.menuIcon}>
-                <MaterialIcons name={item.icon as any} size={18} color={Colors.brand.accent} />
-              </View>
-              <Text style={styles.menuLabel}>{item.label}</Text>
-              <MaterialIcons name="chevron-right" size={20} color={Colors.text.muted} />
-            </Pressable>
-          ))}
-        </GlassCard>
+        {sections.map(section => (
+          <View key={section.title} style={styles.section}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+            <GlassCard style={styles.sectionCard}>
+              {section.items.map((item, idx) => (
+                <Pressable key={item.label} style={[styles.menuItem, idx < section.items.length - 1 && styles.menuBorder]}>
+                  <View style={[styles.menuIcon, { backgroundColor: `${item.color}20` }]}>
+                    <MaterialIcons name={item.icon as any} size={18} color={item.color} />
+                  </View>
+                  <Text style={styles.menuLabel}>{item.label}</Text>
+                  <MaterialIcons name="chevron-right" size={18} color={Colors.text.muted} />
+                </Pressable>
+              ))}
+            </GlassCard>
+          </View>
+        ))}
 
-        <Pressable onPress={handleLogout} style={styles.logoutBtn}>
-          <MaterialIcons name="logout" size={20} color={Colors.semantic.error} />
+        <Pressable onPress={() => logout()} style={({ pressed }) => [styles.logoutBtn, { opacity: pressed ? 0.8 : 1 }]}>
+          <MaterialIcons name="logout" size={18} color={Colors.semantic.error} />
           <Text style={styles.logoutText}>Sign Out</Text>
         </Pressable>
+        <Text style={styles.version}>PataFundi v{APP_CONFIG.version}</Text>
       </ScrollView>
     </View>
   );
@@ -83,23 +127,25 @@ export default function FundiProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background.primary },
-  title: { fontSize: 24, fontWeight: '800', color: Colors.text.primary, paddingHorizontal: 20, paddingVertical: 16, includeFontPadding: false },
+  title: { fontSize: 24, fontWeight: '800', color: Colors.text.primary, paddingHorizontal: 20, paddingVertical: 14, includeFontPadding: false },
   content: { paddingHorizontal: 20, paddingBottom: 120 },
-  profileCard: { marginBottom: 20 },
-  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 20 },
-  profileInfo: { flex: 1, gap: 6 },
-  name: { fontSize: 20, fontWeight: '700', color: Colors.text.primary, includeFontPadding: false },
-  email: { fontSize: 13, color: Colors.text.secondary, includeFontPadding: false },
-  badgeRow: {},
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around', paddingTop: 16, borderTopWidth: 1, borderTopColor: Colors.glass.border },
-  statItem: { alignItems: 'center' },
-  statVal: { fontSize: 20, fontWeight: '800', color: Colors.text.primary, includeFontPadding: false },
-  statLbl: { fontSize: 12, color: Colors.text.muted, marginTop: 2, includeFontPadding: false },
-  menuCard: { marginBottom: 20 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, gap: 12 },
-  menuItemBorder: { borderBottomWidth: 1, borderBottomColor: Colors.glass.borderLight },
-  menuIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(20,184,166,0.1)', alignItems: 'center', justifyContent: 'center' },
+  profileCard: { alignItems: 'center', marginBottom: 20, gap: 8 },
+  profileInfo: { alignItems: 'center', gap: 6 },
+  profileName: { fontSize: 20, fontWeight: '700', color: Colors.text.primary, includeFontPadding: false },
+  profileEmail: { fontSize: 13, color: Colors.text.muted, includeFontPadding: false },
+  badgeRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+  statCard: { flex: 1, alignItems: 'center', gap: 4 },
+  statValue: { fontSize: 20, fontWeight: '800', color: Colors.text.primary, includeFontPadding: false },
+  statLabel: { fontSize: 11, color: Colors.text.muted, includeFontPadding: false },
+  section: { marginBottom: 20 },
+  sectionTitle: { fontSize: 13, fontWeight: '600', color: Colors.text.muted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8, includeFontPadding: false },
+  sectionCard: { gap: 0 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14 },
+  menuBorder: { borderBottomWidth: 1, borderBottomColor: Colors.glass.borderLight },
+  menuIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   menuLabel: { flex: 1, fontSize: 15, color: Colors.text.primary, includeFontPadding: false },
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, backgroundColor: Colors.semantic.errorBg, borderRadius: Radius.xl, borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)' },
-  logoutText: { fontSize: 15, fontWeight: '600', color: Colors.semantic.error, includeFontPadding: false },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, backgroundColor: Colors.semantic.errorBg, borderRadius: Radius.xl, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)' },
+  logoutText: { fontSize: 15, fontWeight: '700', color: Colors.semantic.error, includeFontPadding: false },
+  version: { textAlign: 'center', fontSize: 12, color: Colors.text.muted, marginBottom: 20, includeFontPadding: false },
 });

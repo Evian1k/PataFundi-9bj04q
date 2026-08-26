@@ -101,14 +101,22 @@ serve(async (req) => {
       await supabase.from('job_timeline').insert({ job_id: payment.job_id, status: 'payment_complete' });
 
       // Internally calculate fundi earnings — commission never exposed to UI
-      const fundiEarnings = payment.amount * (1 - PLATFORM_COMMISSION);
-      await supabase
+      const fundiEarnings = Math.round(payment.amount * (1 - PLATFORM_COMMISSION));
+      // Get current values then update (RPC increment not available as update value)
+      const { data: fp } = await supabase
         .from('fundi_profiles')
-        .update({
-          available_earnings: supabase.rpc('increment', { x: fundiEarnings }) as any,
-          total_jobs: supabase.rpc('increment', { x: 1 }) as any,
-        })
-        .eq('id', payment.fundi_id);
+        .select('available_earnings, total_jobs')
+        .eq('id', payment.fundi_id)
+        .single();
+      if (fp) {
+        await supabase
+          .from('fundi_profiles')
+          .update({
+            available_earnings: (fp.available_earnings || 0) + fundiEarnings,
+            total_jobs: (fp.total_jobs || 0) + 1,
+          })
+          .eq('id', payment.fundi_id);
+      }
 
       return new Response(JSON.stringify({
         success: true,
