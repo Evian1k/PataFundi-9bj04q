@@ -7,7 +7,7 @@ export { Badge } from './ui/Badge';
 export { Avatar } from './ui/Avatar';
 export { GlassCard } from './ui/GlassCard';
 export { LoadingSpinner } from './ui/LoadingSpinner';
-export { Skeleton, CardSkeleton } from './ui/SkeletonLoader';
+export { Skeleton, CardSkeleton, SkeletonLoader } from './ui/SkeletonLoader';
 export { EmptyState } from './ui/EmptyState';
 
 // Layout

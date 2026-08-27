@@ -8,18 +8,20 @@ interface EmptyStateProps {
   icon?: string;
   title: string;
   description?: string;
+  message?: string;  // alias for description
   actionLabel?: string;
   onAction?: () => void;
 }
 
-export function EmptyState({ icon = 'inbox', title, description, actionLabel, onAction }: EmptyStateProps) {
+export function EmptyState({ icon = 'inbox', title, description, message, actionLabel, onAction }: EmptyStateProps) {
+  const body = description || message;
   return (
     <View style={styles.container}>
       <View style={styles.iconBg}>
         <MaterialIcons name={icon as any} size={40} color={Colors.text.muted} />
       </View>
       <Text style={styles.title}>{title}</Text>
-      {description ? <Text style={styles.description}>{description}</Text> : null}
+      {body ? <Text style={styles.description}>{body}</Text> : null}
       {actionLabel && onAction ? (
         <Button title={actionLabel} onPress={onAction} variant="glass" size="md" style={{ marginTop: 16 }} />
       ) : null}

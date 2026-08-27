@@ -29,6 +29,9 @@ export function Skeleton({ width = '100%', height = 16, borderRadius = Radius.sm
   );
 }
 
+// Alias used across all screens — must be defined after Skeleton
+export const SkeletonLoader = Skeleton;
+
 export function CardSkeleton() {
   return (
     <View style={styles.card}>
